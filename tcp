@@ -1,0 +1,91 @@
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+// Winsockライブラリをリンク
+#pragma comment(lib, "Ws2_32.lib")
+
+#define SERVER_PORT "30242"
+#define SERVER_ADDR "127.0.0.1"  // サーバーのIPアドレス
+#define MESSAGE "hello"
+
+int main() {
+    WSADATA wsaData;
+    int iResult;
+
+    // Winsockを初期化
+    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0) {
+        std::cerr << "WSAStartup failed: " << iResult << std::endl;
+        return 1;
+    }
+
+    struct addrinfo* result = NULL;
+    struct addrinfo hints;
+
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    // サーバーのアドレス情報を取得
+    iResult = getaddrinfo(SERVER_ADDR, SERVER_PORT, &hints, &result);
+    if (iResult != 0) {
+        std::cerr << "getaddrinfo failed: " << iResult << std::endl;
+        WSACleanup();
+        return 1;
+    }
+
+    // ソケットを作成
+    SOCKET ConnectSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    if (ConnectSocket == INVALID_SOCKET) {
+        std::cerr << "Error at socket(): " << WSAGetLastError() << std::endl;
+        freeaddrinfo(result);
+        WSACleanup();
+        return 1;
+    }
+
+    // サーバーに接続
+    iResult = connect(ConnectSocket, result->ai_addr, (int)result->ai_addrlen);
+    if (iResult == SOCKET_ERROR) {
+        std::cerr << "Unable to connect to server: " << WSAGetLastError() << std::endl;
+        closesocket(ConnectSocket);
+        freeaddrinfo(result);
+        WSACleanup();
+        return 1;
+    }
+
+    freeaddrinfo(result);
+
+    // 1秒間隔で"hello"を送信
+    while (true) {
+        iResult = send(ConnectSocket, MESSAGE, (int)strlen(MESSAGE), 0);
+        if (iResult == SOCKET_ERROR) {
+            std::cerr << "send failed: " << WSAGetLastError() << std::endl;
+            closesocket(ConnectSocket);
+            WSACleanup();
+            return 1;
+        }
+
+        std::cout << "Sent: " << MESSAGE << std::endl;
+
+        // 1秒間隔を待機
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    // ソケットをシャットダウンしてクリーンアップ
+    iResult = shutdown(ConnectSocket, SD_SEND);
+    if (iResult == SOCKET_ERROR) {
+        std::cerr << "shutdown failed: " << WSAGetLastError() << std::endl;
+        closesocket(ConnectSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    closesocket(ConnectSocket);
+    WSACleanup();
+
+    return 0;
+}
